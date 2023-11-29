@@ -1,4 +1,6 @@
+using AuctionService;
 using AuctionService.Data;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,7 +13,26 @@ builder.Services.AddDbContext<AuctionDbContext>(opt =>
 });
 
 // will look for any Class derived from Profile class and register the mapping in memory
-builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies()); 
+builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+builder.Services.AddMassTransit(x =>
+{
+    x.AddEntityFrameworkOutbox<AuctionDbContext>(opt =>
+    {
+        opt.QueryDelay = TimeSpan.FromSeconds(10);
+
+        opt.UsePostgres();
+        opt.UseBusOutbox();
+    });
+
+    // for faulty consumer, same as Search service
+    x.AddConsumersFromNamespaceContaining<AuctionCreatedFaultConsumer>();
+    x.SetEndpointNameFormatter(new KebabCaseEndpointNameFormatter("action", false));
+    
+    x.UsingRabbitMq((context, config) =>
+    {
+        config.ConfigureEndpoints(context);
+    });
+});
 
 
 var app = builder.Build();
